@@ -1,0 +1,148 @@
+services:
+  # Databases
+  postgres-auth:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+      POSTGRES_DB: auth_db
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+
+  postgres-bidding:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: bidding_user
+      POSTGRES_PASSWORD: bidding_pass
+      POSTGRES_DB: bidding_db
+    volumes:
+      - postgres-bidding-data:/var/lib/postgresql/data
+
+  mongo-catalogue:
+    image: mongo:6
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: catalogue_user
+      MONGO_INITDB_ROOT_PASSWORD: catalogue_pass
+    volumes:
+      - mongo-catalogue-data:/data/db
+
+  redis-auction:
+    image: redis:7
+    volumes:
+      - redis-auction-data:/data
+
+  postgres-payment:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: payment_user
+      POSTGRES_PASSWORD: payment_pass
+      POSTGRES_DB: payment_db
+    volumes:
+      - postgres-payment-data:/var/lib/postgresql/data
+
+  mongo-notification:
+    image: mongo:6
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: notification_user
+      MONGO_INITDB_ROOT_PASSWORD: notification_pass
+    volumes:
+      - mongo-notification-data:/data/db
+
+  # Message Broker
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "15672:15672" # Management UI
+      - "5672:5672"   # AMQP port
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbit_user
+      RABBITMQ_DEFAULT_PASS: rabbit_pass
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  # Services
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80" # Host 5173 and Container 5173 (Vite development server) or Host 80 and Container 80 (Nginx production server)
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+
+  api-gateway:
+    build: ./backend/api-gateway
+    ports:
+      - "8080:8080" # Host 8080 and Container 8080
+    environment:
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
+      BIDDING_SERVICE_URL: ${BIDDING_SERVICE_URL}
+      CATALOGUE_SERVICE_URL: ${CATALOGUE_SERVICE_URL}
+      AUCTION_SERVICE_URL: ${AUCTION_SERVICE_URL}
+      PAYMENT_SERVICE_URL: ${PAYMENT_SERVICE_URL}
+      NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL}
+    depends_on:
+      - postgres-auth
+
+  auth-service:
+    build: ./backend/auth-service
+    expose:
+      - "3000"
+    environment:
+      AUTH_DATABASE_URL: ${AUTH_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      - postgres-auth
+
+  bidding-service:
+    build: ./backend/bidding-service
+    expose:
+      - "3001"  # Private service, only accessible within Docker network
+    environment:
+      BIDDING_DATABASE_URL: ${BIDDING_DATABASE_URL}
+    depends_on:
+      - postgres-bidding
+
+  catalogue-service:
+    build: ./backend/catalogue-service
+    expose:
+      - "3002"  # Private service, only accessible within Docker network
+    environment:
+      CATALOGUE_DATABASE_URL: ${CATALOGUE_DATABASE_URL}
+    depends_on:
+      - mongo-catalogue
+
+  auction-service:
+    build: ./backend/auction-service
+    expose:
+      - "3003"  # Private service, only accessible within Docker network
+    environment:
+      REDIS_URL: ${REDIS_URL}
+    depends_on:
+      - redis-auction
+
+  payment-service:
+    build: ./backend/payment-service
+    expose:
+      - "3004"  # Private service, only accessible within Docker network
+    environment:
+      PAYMENT_DATABASE_URL: ${PAYMENT_DATABASE_URL}
+    depends_on:
+      - postgres-auth
+      - rabbitmq
+
+  notification-service:
+    build: ./backend/notification-service
+    expose:
+      - "3005"  # Private service, only accessible within Docker network
+    environment:
+      NOTIFICATION_DATABASE_URL: ${NOTIFICATION_DATABASE_URL}
+    depends_on:
+      - rabbitmq
+
+volumes:
+  postgres-auth-data:
+  postgres-bidding-data:
+  mongo-catalogue-data:
+  redis-auction-data:
+  postgres-payment-data:
+  mongo-notification-data:
+  rabbitmq-data:
